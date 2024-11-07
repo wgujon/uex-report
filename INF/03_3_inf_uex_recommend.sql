@@ -11,7 +11,7 @@
 
 -- COMMAND ----------
 
-select * from wgu_analytics.marketing.inf_daily_trailhead_recommend limit 100
+--select * from wgu_analytics.marketing.inf_daily_trailhead_recommend limit 100
 
 -- COMMAND ----------
 
@@ -93,7 +93,15 @@ SELECT
 , IF(recommend_product1 = "", NULL, recommend_product1) AS recommend_product1
 , IF(recommend_product2 = "", NULL, recommend_product2) AS recommend_product2
 , IF(recommend_product3 = "", NULL, recommend_product3) AS recommend_product3
-, recommend_stage
+, CASE WHEN recommend_stage LIKE 'Pre-Transcript%' THEN 1 ELSE 0 END AS pre_transcript_flag
+, CASE
+    WHEN care_status_at_recommend IN ('NAMT', 'NAYT', 'PEND') 
+     AND recommend_stage IS NOT NULL THEN 'Pre-Transcript + NAYT'
+    WHEN care_status_at_recommend IN ('NAMT', 'NAYT', 'PEND') 
+     AND recommend_stage IS NULL THEN 'NAYT'
+    WHEN care_status_at_recommend NOT IN ('NAMT', 'NAYT', 'PEND') 
+     AND recommend_stage IS NOT NULL THEN 'Pre-Transcript'
+    ELSE 'Missing' END AS recommend_stage
 , trailheads_submit_transcripts
 , care_status_at_recommend
 , CASE 
@@ -118,6 +126,14 @@ LEFT JOIN enrollment_counselor ec USING (opportunity_id)
 ;
 
 SELECT * FROM vw_recommend LIMIT 1000;
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Check IDs
+SELECT 
+  COUNT(opportunity_id) AS ids
+, COUNT(DISTINCT opportunity_id) AS unique_ids
+FROM vw_recommend
 
 -- COMMAND ----------
 
