@@ -23,8 +23,8 @@ AS
 SELECT
   a.*
 , CASE 
-      WHEN acad_program_of_interest = 'Certificates' THEN NULL
-      ELSE acad_program_of_interest END AS acad_prog_interest_without_cert
+    WHEN acad_program_of_interest = 'Certificates' THEN NULL
+    ELSE acad_program_of_interest END AS acad_prog_interest_without_cert
 , ifnull(r.recommend_flag, 0) AS recommend_flag
 , r.recommend_date
 , r.recommend_datetime
@@ -32,7 +32,7 @@ SELECT
 , r.recommend_product_type
 , r.recommend_reason
 , r.recommend_products
-, r.recommend_stage
+, coalesce(r.recommend_stage, 'Missing') as recommend_stage
 , r.care_status_at_recommend
 , ifnull(r.not_admitted_at_rec, 0) AS not_admitted_at_rec
 , r.latest_care_status
@@ -250,3 +250,57 @@ FROM vw_recommend
 -- MAGIC   .option("overwriteSchema", True)
 -- MAGIC   .saveAsTable("users.jonathan_huck.tvz_uex_cohort_academy_inquiry")
 -- MAGIC )
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC ## Validation
+
+-- COMMAND ----------
+
+describe users.jonathan_huck.tvz_uex_cohort_academy_inquiry
+
+-- COMMAND ----------
+
+select * from users.jonathan_huck.tvz_uex_cohort_academy_inquiry limit 100
+
+-- COMMAND ----------
+
+with academy as (
+  select 
+    last_day(acad_start_date) as report_month
+  , count(opportunity_id) as n_all
+  from users.jonathan_huck.tvz_uex_cohort_academy_inquiry
+  where acad_start_date is not null
+  group by 1
+),
+
+trailheads as (
+  select 
+    last_day(acad_start_date) as report_month
+  , count(opportunity_id) as n_th
+  from users.jonathan_huck.tvz_uex_cohort_academy_inquiry
+  where acad_start_date is not null
+    and client_subclass = 'Trailheads'
+  group by 1
+),
+
+recommend as (
+  select 
+    last_day(acad_start_date) as report_month
+  , count(opportunity_id) as n_rec
+  from users.jonathan_huck.tvz_uex_cohort_academy_inquiry
+  where acad_start_date is not null
+    and recommend_flag = 1
+  group by 1
+)
+
+select
+  a.report_month
+, a.n_all
+, b.n_th
+, c.n_rec
+from academy a
+left join trailheads b using (report_month)
+left join recommend c using (report_month)
+order by 1

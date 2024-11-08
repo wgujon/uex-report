@@ -14,7 +14,7 @@
 
 -- COMMAND ----------
 
-select * from wgu_analytics.academics_academy.rst_academy_student_week limit 10
+--select * from wgu_analytics.academics_academy.rst_academy_student_week limit 10
 
 -- COMMAND ----------
 
@@ -26,8 +26,8 @@ select
 , s.subscription_id
 , new_start as acad_start_flag
 , to_date(month_end_date) as acad_start_month
-, academy_stage_date as acad_start_date -- is this Mountain Time?
-, expiration_date -- is this Mountain Time?
+, academy_stage_date as acad_start_date
+, expiration_date
 , s.referral_channel__c as referral_channel
 , case 
     when s.offering_type in ('Single Courses', 'Course Bundles') then 'On-Ramp'
@@ -59,11 +59,13 @@ select * from vw_start limit 100;
 -- DBTITLE 1,Check IDs
 -- Duplicate IDs because students have multiple subscriptions
 SELECT
-  count(wgu_id) AS wgu
+  client_subclass
+, count(wgu_id) AS wgu
 , count(distinct wgu_id) AS unique_wgu
 , count(contact_id) AS contact
 , count(distinct contact_id) AS unique_contact
 FROM vw_start
+GROUP BY 1 WITH ROLLUP
 
 -- COMMAND ----------
 
@@ -79,7 +81,7 @@ with etl as (
 mbr as (
   select
     to_date(end_date) as start_month
-  , sum(enrolled) as n_mbr --initial_term_enrollments?
+  , sum(enrolled) as n_mbr 
   from wgu_analytics.academics_academy.dbv_wbr_acad_enrollment
   where time_period = 'Monthly'
   group by 1
@@ -94,6 +96,15 @@ select
 from etl
 join mbr using (start_month)
 order by 1 desc
+
+-- COMMAND ----------
+
+select
+    last_day(acad_start_month) as start_month
+, sum(acad_start_flag) as n_etl
+from vw_start
+where client_subclass = 'Trailheads'
+group by 1
 
 -- COMMAND ----------
 
@@ -493,6 +504,16 @@ select
 from etl
 join mbr using (start_month)
 order by 1 desc
+
+-- COMMAND ----------
+
+select
+    last_day(acad_start_date) as start_month
+  , count(opportunity_id) as n_etl
+from users.jonathan_huck.inf_uex_academy
+where client_subclass = 'Trailheads'
+group by 1
+order by 1
 
 -- COMMAND ----------
 

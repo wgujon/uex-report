@@ -1,6 +1,6 @@
 -- Databricks notebook source
 -- MAGIC %md 
--- MAGIC # Trailheads Recommendation Received by Academy
+-- MAGIC # Trailheads Academy Inquiries
 -- MAGIC Cohorts defined by the date Academy receives a new inquiry in their system, filtered on Trailheads client subclass.
 
 -- COMMAND ----------
@@ -113,6 +113,52 @@ SELECT
 , COUNT(*) -- about 1% missing opportunity ID as of October 18
 FROM vw_academy
 GROUP BY ALL
+
+-- COMMAND ----------
+
+-- DBTITLE 1,Academy MBR
+WITH inquiries AS (
+  SELECT 
+    wbr.contact_id
+  , wbr.reportdate
+  , to_date(date_trunc("week", wbr.reportdate)) AS report_week
+  , to_date(last_day(wbr.reportdate)) AS report_month
+  , wbr.client_subclass__c 
+  FROM wguacademy.tvz_wbr_compendium_tempv3 wbr
+  LEFT JOIN wguacademy.contacts c ON wbr.contact_id = c.id
+  WHERE denominator <> 0
+    AND wbr.index IS NOT NULL
+    AND wbr.metric = "5_inquiries"
+    AND wbr.client IS NULL
+    AND c.client_subclass__c = "Trailheads"
+),
+
+wbr AS (
+  SELECT
+    report_month AS report_date
+  , count(contact_id) AS n_wbr
+  FROM inquiries
+  GROUP BY 1
+),
+
+etl AS (
+  SELECT
+    last_day(received_date) AS report_date
+  , COUNT(contact_id) AS n_etl
+  FROM vw_academy
+  GROUP BY 1
+)
+
+SELECT
+  a.report_date
+, a.n_etl
+, b.n_wbr
+, a.n_etl - b.n_wbr AS n_diff
+, round((a.n_etl - b.n_wbr) / a.n_etl, 2) AS pct_diff
+FROM etl a
+JOIN wbr b USING (report_date)
+WHERE report_date < current_date()
+ORDER BY 1
 
 -- COMMAND ----------
 
@@ -404,7 +450,6 @@ SELECT * FROM vw_cohort;
 -- COMMAND ----------
 
 -- DBTITLE 1,Check Completion Inconsistency
--- CHECK WITH JOSH: HOW TO RECONCILE THIS?
 SELECT
   CASE WHEN Completed_OnRamp = 1 THEN 1 ELSE 0 END AS academy_status_code,
   CASE WHEN completed_course_flag = 1 THEN 1 ELSE 0 END AS product_complete_code,
@@ -412,28 +457,6 @@ SELECT
 FROM vw_cohort
 WHERE Completed_OnRamp != completed_course_flag
 GROUP BY ALL
-
--- COMMAND ----------
-
--- DBTITLE 1,Check Against Chelsea's PDF
-select 
-  received_month
-, COUNT(*) as Referrals
-, SUM(Started_OnRamp) as Started_OnRamp
-, SUM(Active_OnRamp_Total) as Active_OnRamp_Total
-, SUM(Paused_OnRamp) as Paused_OnRamp
-, SUM(Completed_OnRamp) as Completed_OnRamp
-, SUM(Dropped_OnRamp_7d) as Dropped_OnRamp_7d
-, SUM(Dropped_OnRamp_7d_over) as Dropped_OnRamp_7d_over
-, SUM(Dropped_OnRamp) as Dropped_OnRamp
-, SUM(Started_Degree) as Started_Degree
-, SUM(Started_OnRamp_and_Degree) as Started_OnRamp_and_Degree
-, SUM(Started_Direct_Degree) as Started_Direct_Degree
-from vw_cohort
---where product_category != "Certificate"
---  and academy_enrollment_status != "Prospecting"
-group by 1
-order by 1
 
 -- COMMAND ----------
 
