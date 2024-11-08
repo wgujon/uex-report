@@ -213,6 +213,10 @@ DESCRIBE users.jonathan_huck.inf_uex_recommend
 
 -- COMMAND ----------
 
+SELECT *  FROM users.jonathan_huck.inf_uex_recommend LIMIT 100
+
+-- COMMAND ----------
+
 -- DBTITLE 1,IDs
 SELECT 
   COUNT(opportunity_id) AS ids

@@ -194,4 +194,5 @@ select
 , round((n_etl - n_mbr) / n_mbr, 3) * 100 as perc_diff
 from etl
 join mbr using (app_month)
+where app_month < current_date()
 order by 1 desc
