@@ -24,7 +24,8 @@ select
 from users.jonathan_huck.inf_uex_account a
 left join users.jonathan_huck.inf_uex_app b
   on a.opportunity_id = b.opportunity_id
-  and b.app_date >= a.account_created_date;
+  and b.app_date >= a.account_created_date
+;
 
 -- COMMAND ----------
 
@@ -148,6 +149,9 @@ select
 , case 
     when degree_start_flag = 1 and acad_start_flag != 1 then 1 
     else 0 end as direct_degree_start_flag
+, case 
+    when degree_start_flag = 1 and acad_start_flag = 1 then 1 
+    else 0 end as degree_start_with_acad_flag
 , b.acad_start_date 
 , b.referral_channel
 , b.offering_type
@@ -178,10 +182,38 @@ where acad_start_flag = 1 limit 1000;
 -- DBTITLE 1,Transcript
 CREATE OR REPLACE TEMPORARY VIEW vw_transcript
 AS
+WITH cte_transcript AS (
+  SELECT DISTINCT 
+    OPPORTUNITY__C as opportunity_id
+  , MAX(CASE 
+        WHEN degreetype__c LIKE 'Doctor%' THEN 1
+        WHEN degreetype__c LIKE 'Mast%' THEN 1
+        WHEN degreetype__c LIKE 'Bach%' THEN 1
+        WHEN degreetype__c LIKE 'Assoc%' THEN 1
+        ELSE 0 END) AS has_degree
+    --max(CASE
+    --      WHEN DEGREETYPE__C IN (
+    --        'Associate of Science',
+    --        'Associate of Applied Arts',
+    --        "Bachelor's",
+    --        "Master's",
+    --        'Associate of Arts',
+    --        'Doctorate',
+    --        'Associate of Applied Science',
+    --        'Associate – Other'
+    --      ) THEN 2
+    --      WHEN DEGREETYPE__C IN ('Other', 'No Degree Earned') THEN 1
+    --    ELSE 0
+    --END ) OVER (partition by OPPORTUNITY__C) AS degree_category
+  FROM wgu_lakehouse.salesforce_srm.bi_t_studenttranscript
+  GROUP BY 1
+)
+
 SELECT 
   a.*
-, b.associate_plus
-, b.no_degree
+--, --b.associate_plus
+--, --b.no_degree
+, c.has_degree
 , b.courses_failed
 , b.courses_withdrawn
 , b.courses_passed
@@ -192,8 +224,8 @@ SELECT
 , b.gpa_tran_crs
 , b.gpa_hs
 FROM vw_onramp_start a
-LEFT JOIN users.jonathan_huck.inf_uex_transcript b
-USING (opportunity_id);
+LEFT JOIN users.jonathan_huck.inf_uex_transcript b USING (opportunity_id)
+LEFT JOIN cte_transcript c USING (opportunity_id);
 
 SELECT 
   count(opportunity_id) AS ids
@@ -226,14 +258,37 @@ WITH nayt AS (
     PARTITION BY a.opportunity_id
     ORDER BY fh.createddate DESC
   ) = 1
+),
+
+intv AS (
+  SELECT 
+    a.opportunity_id
+  , to_date(from_utc_timestamp(fh.createddate, 'America/Denver')) AS care_status_date
+  , fh.newvalue AS care_status
+  , CASE 
+      WHEN fh.newvalue LIKE "INTV%" THEN 1
+      ELSE 0 END AS intv_flag
+  FROM vw_transcript a
+  JOIN wgu_lakehouse.salesforce_srm.bi_o_opportunityfieldhistory fh
+    ON fh.opportunityid = a.opportunity_id
+    AND fh.createddate <= a.app_date
+  WHERE fh.field = "CareStatus__c"
+  QUALIFY row_number() OVER (
+    PARTITION BY a.opportunity_id
+    ORDER BY fh.createddate DESC
+  ) = 1
 )
 
 SELECT 
   a.*
 , b.nayt_ever_flag
-, IF(b.nayt_ever_flag = 1, b.care_status_date, NULL) AS nayt_date
+, c.intv_flag
+, IF(b.nayt_ever_flag = 1, b.care_status_date, NULL) AS nayt_ever_date
+, IF(c.intv_flag = 1, c.care_status_date, NULL) AS intv_date
 FROM vw_transcript a
-LEFT JOIN nayt b USING (opportunity_id);
+LEFT JOIN nayt b USING (opportunity_id)
+LEFT JOIN intv c USING (opportunity_id)
+;
 
 SELECT 
   count(opportunity_id) AS ids
@@ -383,7 +438,7 @@ select * from vw_transform limit 100;
 -- MAGIC (
 -- MAGIC   df.write.format("delta")
 -- MAGIC   .mode("overwrite")
--- MAGIC   .option("mergeSchema", True)
+-- MAGIC   .option("overwriteSchema", True)
 -- MAGIC   .saveAsTable("users.jonathan_huck.tvz_uex_cohort_account")
 -- MAGIC )
 
